@@ -1,0 +1,196 @@
+---
+title: "Black_Friday_Project"
+author: "Irene Huang and Kathleen Gendotti"
+subtitle: MGSC 310, Fall 2018, Professor Hersh
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+Changes the age, city category and occupation variables from integers to factors, provides the variable types and checks for any missing values, sets seed, gets rid of scientific notation
+```{r}
+BlackFridayDF <- read.csv("/Users/kathleengendotti/Downloads/BlackFriday.csv")
+BlackFridayDF$Age <- as.factor(BlackFridayDF$Age)
+BlackFridayDF$City_Category <- as.factor(BlackFridayDF$City_Category)
+BlackFridayDF$Occupation <- as.factor(BlackFridayDF$Occupation)
+colSums(is.na(BlackFridayDF))
+BlackFridayDF <- BlackFridayDF[!is.na(BlackFridayDF$Product_Category_1), ]
+BlackFridayDF <- BlackFridayDF[!is.na(BlackFridayDF$Product_Category_2), ]
+BlackFridayDF <- BlackFridayDF[!is.na(BlackFridayDF$Product_Category_3), ]
+BlackFridayDF <- BlackFridayDF[!is.na(BlackFridayDF$User_ID), ]
+BlackFridayDF <- BlackFridayDF[!is.na(BlackFridayDF$Product_ID), ]
+colSums(is.na(BlackFridayDF))
+set.seed(1861)
+options(scipen=15)
+```
+Gives mean, median, 25th and 75th quartiles, min, and max of the variables
+```{r}
+summary(BlackFridayDF)
+```
+
+Histogram of purchase
+```{r}
+hist(BlackFridayDF$Purchase, col = 8, xlab = "Purchase", ylab = "Count", main = "Purchase vs. count")
+```
+
+
+This pie chart shows the distribution of total purchases by age group
+```{r}
+library('plotly')
+pieAge <- plot_ly(BlackFridayDF, labels = ~Age, values = ~Purchase, type = 'pie') %>%
+  layout(title = 'Age Group Purchases',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+pieAge
+```
+
+Pie chart of purchases by gender
+```{r}
+
+pieGender <- plot_ly(BlackFridayDF, labels = ~Gender, values = ~Purchase, type = 'pie') %>%
+  layout(title = 'Gender Group Purchases',
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+pieGender
+```
+
+These boxplots shows the distribution of purchases by gender
+```{r}
+ggplot(aes(x=Gender, y=Purchase, fill=Gender), data = BlackFridayDF)+geom_boxplot()
+```
+
+Histogram plots of purchase by occupation
+```{r}
+BlackFridayDF$Purchase <- log(BlackFridayDF$Purchase)
+library("ggplot2")
+ggplot(aes(Purchase), data = BlackFridayDF) + geom_histogram() + theme_light() + labs(title = "Plot of Total Purchases by Occupation", x = "Purchase (in dollars)") + facet_wrap(~Occupation)
+```
+
+This plot shows the frequency of various total purchase values colored by the number of years the individual has lived in their current city.
+```{r}
+ggplot(aes(Purchase, fill = City_Category), data = BlackFridayDF) + geom_histogram() + theme_light() + labs(title = "Plot of Total Purchase Price Frequency by Number of Years Lived in Current City", x = "Purchase (in dollars)")+ facet_wrap(~Stay_In_Current_City_Years)
+```
+
+
+These plots show the plots of purchases separated by the city catgeories and colored in by the number of years the individual has lived in their current city.
+```{r}
+ggplot(aes(Purchase, fill = Stay_In_Current_City_Years), data = BlackFridayDF) + geom_histogram() + theme_light() + labs(title = "Plot of Total Purchase Price Frequency by City Catgeory", subtitle = "Colored by Number of Years Lived in Current City", x = "Purchase (in dollars)") + facet_wrap(~City_Category)
+
+```
+
+
+Linear Regression Model
+```{r}
+Linear_regression <- lm(formula = Purchase ~ Gender + Age + Occupation + City_Category + Stay_In_Current_City_Years + Marital_Status, data = BlackFridayDF)
+summary(Linear_regression)
+```
+
+Generalized Linear Model
+```{r}
+library(glmnet)
+logitFit <- glm(Purchase ~ Gender + Age + Occupation + City_Category + Stay_In_Current_City_Years + Marital_Status, data = BlackFridayDF)
+summary(logitFit)
+
+BlackFridayDF$PurchaseHigh <- ifelse(BlackFridayDF$Purchase > median(BlackFridayDF$Purchase),1,0)
+
+doBy::summaryBy(PurchaseHigh ~ Gender + Age + Occupation + City_Category + Stay_In_Current_City_Years + Marital_Status, data = BlackFridayDF)
+
+tFit <- glm(PurchaseHigh ~ Gender + Age + Occupation + City_Category + Stay_In_Current_City_Years + Marital_Status, data = BlackFridayDF, family = binomial)
+summary(tFit)
+```
+
+Lasso vs. Ridge Models
+```{r}
+myFormula <- as.formula(Purchase ~ Gender + Age + Occupation + City_Category + Stay_In_Current_City_Years + Marital_Status)
+
+library("useful")
+Xvar <- build.x(myFormula, data=BlackFridayDF)
+Yvar <- build.y(myFormula, data=BlackFridayDF)
+library("glmnet")
+LassoMod <- cv.glmnet(x = Xvar, y = Yvar, alpha = 1, nfolds=10)
+RidgeMod <- cv.glmnet(x = Xvar, y = Yvar, alpha = 0, nfolds=10)
+
+Lassomin = coef(LassoMod, s = "lambda.min")
+Lasso1se = coef(LassoMod, s = "lambda.1se")
+Ridgemin = coef(RidgeMod, s = "lambda.min")
+Ridge1se = coef(RidgeMod, s = "lambda.1se")
+
+Lassomin = round(Lassomin, digits = 4)
+Ridgemin = round(Ridgemin, digits = 4)
+Lasso1se = round(Lasso1se, digits = 4)
+Ridge1se = round(Ridge1se, digits = 4)
+
+table1 = cbind(Lassomin,Ridgemin)
+colnames(table1) = c("Lasso", "Ridge")
+print(table1)
+
+table2 = cbind(Lasso1se, Ridge1se)
+colnames(table2) = c("Lasso", "Ridge")
+print(table2)
+
+r2Lassomin <- LassoMod$glmnet.fit$dev.ratio[which(LassoMod$glmnet.fit$lambda == LassoMod$lambda.min)]
+r2Lasso1se <- LassoMod$glmnet.fit$dev.ratio[which(LassoMod$glmnet.fit$lambda == LassoMod$lambda.1se)]
+r2Lassomin
+r2Lasso1se
+
+r2Ridgemin <- RidgeMod$glmnet.fit$dev.ratio[which(RidgeMod$glmnet.fit$lambda == RidgeMod$lambda.min)]
+r2Ridge1se <- RidgeMod$glmnet.fit$dev.ratio[which(RidgeMod$glmnet.fit$lambda == RidgeMod$lambda.1se)]
+r2Ridgemin
+r2Ridge1se
+```
+
+Forward Stepwise Model
+```{r}
+library("leaps")
+#was not sure on good value to set for nvmax so went with the default of 8
+BFFitFwd <- regsubsets(Purchase ~ Gender + Age + Occupation + City_Category + Stay_In_Current_City_Years + Marital_Status , data = BlackFridayDF, nvmax = 8, method = "forward")
+summary(BFFitFwd)
+
+#created separate variables for city catrgories B and C since the forward stepwise model chose them
+BlackFridayDF$City_CategoryB <- ifelse(BlackFridayDF$City_Category == "B",1,0)
+BlackFridayDF$City_CategoryC <- ifelse(BlackFridayDF$City_Category == "C",1,0)
+#created separate variable for the age group of people between 51 and 55
+BlackFridayDF$Age51 <- ifelse(BlackFridayDF$Age == "51-55",1,0)
+#created separate variables for the occupations the model chose
+BlackFridayDF$Occupation1 <- ifelse(BlackFridayDF$Occupation == "1",1,0)
+BlackFridayDF$Occupation10 <- ifelse(BlackFridayDF$Occupation == "10",1,0)
+BlackFridayDF$Occupation19 <- ifelse(BlackFridayDF$Occupation == "19",1,0)
+BlackFridayDF$Occupation20 <- ifelse(BlackFridayDF$Occupation == "20",1,0)
+
+lmDayDF <- lm(Purchase ~ Gender + City_CategoryB + City_CategoryC + Age51 + Occupation1 + Occupation10 + Occupation19 + Occupation20, data = BlackFridayDF)
+summary(lmDayDF)
+```
+
+
+Calculates RMSE and MSE over all the models
+```{r}
+RMSE = function(x1,x2) {
+  sqrt(mean(x1-x2)^2)
+}
+
+lmRMSE = RMSE(predict(Linear_regression, newx = Xvar), BlackFridayDF$Purchase)
+ltRMSE = RMSE(predict(logitFit, newx = Xvar), BlackFridayDF$Purchase)
+LassoRMSE = RMSE(predict(LassoMod, newx = Xvar), BlackFridayDF$Purchase)
+RidgeRMSE = RMSE(predict(RidgeMod, newx = Xvar), BlackFridayDF$Purchase)
+lmDayDFRMSE = RMSE(predict(lmDayDF, newx = Xvar), BlackFridayDF$Purchase)
+
+MSE <- function(yhat, ytrue){ 
+  mean((yhat - ytrue)^2)
+}
+
+lmMSE = MSE(predict(Linear_regression, newx = Xvar), BlackFridayDF$Purchase)
+ltMSE = MSE(predict(logitFit, newx = Xvar), BlackFridayDF$Purchase)
+LassoMSE = MSE(predict(LassoMod, newx = Xvar), BlackFridayDF$Purchase)
+RidgeMSE = MSE(predict(RidgeMod, newx = Xvar), BlackFridayDF$Purchase)
+lmDayDFMSE = RMSE(predict(lmDayDF, newx = Xvar), BlackFridayDF$Purchase)
+
+compareModels <- matrix(c(lmRMSE,ltRMSE, LassoRMSE,RidgeRMSE, lmDayDFRMSE, lmMSE, ltMSE, LassoMSE,RidgeMSE, lmDayDFMSE),ncol=2,byrow=TRUE)
+colnames(compareModels) <- c("RMSE","MSE")
+rownames(compareModels) <- c("Linear Regression", "Generalized Linear","Lasso","Ridge", "Forward Stepwise")
+compareModels <- as.table(compareModels)
+compareModels
+```
+
+
+
